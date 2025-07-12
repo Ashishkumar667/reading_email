@@ -1,17 +1,13 @@
-import fs from 'fs';
 import express from 'express';
 import { google } from 'googleapis';
-import open from 'open';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { htmlToText } from 'html-to-text';
 import dotenv from 'dotenv';
 dotenv.config();
 
-
 const app = express();
-const PORT = process.env.PORT_N || 3000;
+app.use(express.json());
 
+const PORT = process.env.PORT_N || 3000;
 const SCOPES = process.env.GOOGLE_SCOPES;
 
 const oauth2Client = new google.auth.OAuth2(
@@ -20,8 +16,6 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_REDIRECT_URI
 );
 
-let latestEmails = []; 
-
 app.get('/', async (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
@@ -29,13 +23,13 @@ app.get('/', async (req, res) => {
     prompt: 'consent',
   });
   res.json({ auth_url: url });
-  
 });
 
 app.get('/oauth2callback', async (req, res) => {
-const { code } = req.query;
+  const { code } = req.query;
   const { tokens } = await oauth2Client.getToken(code);
   oauth2Client.setCredentials(tokens);
+
   res.json({
     access_token: tokens.access_token,
     refresh_token: tokens.refresh_token,
@@ -47,7 +41,6 @@ app.get('/emails', async (req, res) => {
   const { access_token, from, subject, after, before, is } = req.query;
 
   if (!access_token) return res.status(400).json({ error: 'Missing access_token' });
-
   oauth2Client.setCredentials({ access_token });
 
   let query = '';
@@ -78,9 +71,10 @@ app.get('/emails', async (req, res) => {
         const subject = headers.find(h => h.name === 'Subject')?.value || '(No Subject)';
         const from = headers.find(h => h.name === 'From')?.value || '(No From)';
         const date = headers.find(h => h.name === 'Date')?.value || '(No Date)';
+        const messageId = headers.find(h => h.name === 'Message-ID')?.value || '';
         const body = htmlToText(extractMessageBody(data.payload));
 
-        return { subject, from, date, body };
+        return { subject, from, date, body, threadId: data.threadId, messageId };
       })
     );
 
@@ -91,14 +85,28 @@ app.get('/emails', async (req, res) => {
   }
 });
 
+app.post('/reply', async (req, res) => {
+  const { access_token, threadId, to, subject, inReplyTo, message } = req.body;
 
+  if (!access_token || !threadId || !to || !subject || !message) {
+    return res.status(400).json({ error: 'Missing required fields' });
+  }
+
+  oauth2Client.setCredentials({ access_token });
+
+  try {
+    await sendReply(oauth2Client, threadId, to, subject, inReplyTo, message);
+    res.json({ success: true, message: 'Reply sent successfully' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to send reply' });
+  }
+});
 
 function extractMessageBody(payload) {
   const decode = data => Buffer.from(data, 'base64').toString('utf-8');
 
-  if (payload.body?.data) {
-    return decode(payload.body.data);
-  }
+  if (payload.body?.data) return decode(payload.body.data);
 
   if (payload.parts && payload.parts.length) {
     for (let part of payload.parts) {
@@ -114,6 +122,32 @@ function extractMessageBody(payload) {
   return '(No content)';
 }
 
+async function sendReply(auth, threadId, to, subject, inReplyTo, replyText) {
+  const gmail = google.gmail({ version: 'v1', auth });
+
+  const raw = Buffer.from(
+    `To: ${to}
+Subject: Re: ${subject}
+In-Reply-To: ${inReplyTo}
+References: ${inReplyTo}
+Content-Type: text/plain; charset="UTF-8"
+
+${replyText}`
+  )
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+
+  await gmail.users.messages.send({
+    userId: 'me',
+    requestBody: {
+      raw: raw,
+      threadId: threadId,
+    },
+  });
+}
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
+  console.log(`🚀 Server running on port ${PORT}`);
 });
