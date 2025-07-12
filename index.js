@@ -12,13 +12,7 @@ dotenv.config();
 const app = express();
 const PORT = 3000;
 
-const SCOPES = ['https://www.googleapis.com/auth/gmail.readonly'];
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const CREDENTIALS = JSON.parse(
-  fs.readFileSync(path.join(__dirname, 'credentials.json'), 'utf-8')
-);
+const SCOPES = process.env.GOOGLE_SCOPES;
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
