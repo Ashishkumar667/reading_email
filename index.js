@@ -29,9 +29,9 @@ app.get('/', async (req, res) => {
     prompt: 'consent',
   });
 
+  console.log(` Open this URL in your browser to authorize the app: ${url}`);
+  res.redirect(url);
   
-  await open(url);
-  res.send('Redirecting to Google Login...');
 });
 
 app.get('/oauth2callback', async (req, res) => {
