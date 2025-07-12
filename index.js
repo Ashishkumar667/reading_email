@@ -10,7 +10,7 @@ dotenv.config();
 
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT_N || 3000;
 
 const SCOPES = process.env.GOOGLE_SCOPES;
 
