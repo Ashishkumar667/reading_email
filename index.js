@@ -28,92 +28,69 @@ app.get('/', async (req, res) => {
     scope: SCOPES,
     prompt: 'consent',
   });
-
-  console.log(` Open this URL in your browser to authorize the app: ${url}`);
-  res.redirect(url);
+  res.json({ auth_url: url });
   
 });
 
 app.get('/oauth2callback', async (req, res) => {
-  const { code } = req.query;
+const { code } = req.query;
   const { tokens } = await oauth2Client.getToken(code);
   oauth2Client.setCredentials(tokens);
-
-  await readEmails(oauth2Client);
-  res.redirect('/emails'); 
+  res.json({
+    access_token: tokens.access_token,
+    refresh_token: tokens.refresh_token,
+    expires_in: tokens.expiry_date,
+  });
 });
 
-app.get('/emails', async(req, res) => {
- const { from, subject, after, before, is } = req.query;
+app.get('/emails', async (req, res) => {
+  const { access_token, from, subject, after, before, is } = req.query;
 
-  
+  if (!access_token) return res.status(400).json({ error: 'Missing access_token' });
+
+  oauth2Client.setCredentials({ access_token });
+
   let query = '';
   if (from) query += `from:${from} `;
   if (subject) query += `subject:${subject} `;
-  if (after) query += `after:${after} `;       
+  if (after) query += `after:${after} `;
   if (before) query += `before:${before} `;
-  if (is) query += `is:${is} `;              
+  if (is) query += `is:${is} `;
 
-  await readEmails(oauth2Client, query.trim()); 
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
- 
-  const html = `
-    <h1> Filtered Emails</h1>
-    <p> Search Query: <code>${query.trim() || 'None'}</code></p>
-    <form method="GET" style="margin-bottom:20px">
-      <input name="from" placeholder="From email" value="${from || ''}" />
-      <input name="subject" placeholder="Subject" value="${subject || ''}" />
-      <input name="after" placeholder="After YYYY/MM/DD" value="${after || ''}" />
-      <input name="before" placeholder="Before YYYY/MM/DD" value="${before || ''}" />
-      <select name="is">
-        <option value="">Read/Unread</option>
-        <option value="unread" ${is === 'unread' ? 'selected' : ''}>Unread</option>
-        <option value="read" ${is === 'read' ? 'selected' : ''}>Read</option>
-      </select>
-      <button type="submit">🔍 Filter</button>
-    </form>
-    ${latestEmails.map(email => `
-      <hr />
-      <h3>${email.subject}</h3>
-      <p><strong>From:</strong> ${email.from}</p>
-      <p><strong>Date:</strong> ${email.date}</p>
-      <pre style="white-space:pre-wrap;font-family:inherit;">${email.body}</pre>
-    `).join('')}
-  `;
-  res.send(html);
-});
-
-
-async function readEmails(auth,query = '') {
-  const gmail = google.gmail({ version: 'v1', auth });
-
-   const res = await gmail.users.messages.list({
-  userId: 'me',
-  maxResults: 10,
-  q: query, 
-});
-  const messages = res.data.messages;
-
-  latestEmails = [];
-
-  for (let msg of messages) {
-    const { data: fullMessage } = await gmail.users.messages.get({
+  try {
+    const resp = await gmail.users.messages.list({
       userId: 'me',
-      id: msg.id,
-      format: 'full',
+      maxResults: 10,
+      q: query.trim(),
     });
 
-    const headers = fullMessage.payload.headers;
-    const subject = headers.find(h => h.name === 'Subject')?.value || '(No Subject)';
-    const from = headers.find(h => h.name === 'From')?.value || '(No From)';
-    const date = headers.find(h => h.name === 'Date')?.value || '(No Date)';
-    const rawBody = extractMessageBody(fullMessage.payload);
+    const messages = await Promise.all(
+      (resp.data.messages || []).map(async (msg) => {
+        const { data } = await gmail.users.messages.get({
+          userId: 'me',
+          id: msg.id,
+          format: 'full',
+        });
 
-    const readableBody = htmlToText(rawBody, { wordwrap: 130 });
+        const headers = data.payload.headers;
+        const subject = headers.find(h => h.name === 'Subject')?.value || '(No Subject)';
+        const from = headers.find(h => h.name === 'From')?.value || '(No From)';
+        const date = headers.find(h => h.name === 'Date')?.value || '(No Date)';
+        const body = htmlToText(extractMessageBody(data.payload));
 
-    latestEmails.push({ subject, from, date, body: readableBody });
+        return { subject, from, date, body };
+      })
+    );
+
+    res.json({ query: query.trim(), messages });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to fetch emails' });
   }
-}
+});
+
 
 
 function extractMessageBody(payload) {
