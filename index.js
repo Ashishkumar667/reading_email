@@ -9,7 +9,7 @@ app.use(express.json());
 
 const PORT = process.env.PORT_N || 3000;
 
-const SCOPES = process.env.GOOGLE_SCOPES;
+const SCOPES = process.env.GOOGLE_SCOPES.split(' ');
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
