@@ -88,7 +88,7 @@ app.get('/emails', async (req, res) => {
 app.post('/reply', async (req, res) => {
   const { accesss_token, threadId, to, subject, inReplyTo, message } = req.body;
 
-  if (!access_token || !threadId || !to || !subject || !message) {
+  if (!accesss_token || !threadId || !to || !subject || !message) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
