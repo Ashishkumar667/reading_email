@@ -89,7 +89,7 @@ app.get('/emails', async (req, res) => {
 });
 
 app.post('/reply', async (req, res) => {
-  const { refresh_token, threadId, to, subject, inReplyTo, message } = req.body;
+ const { refresh_token, threadId, to, subject, inReplyTo, message } = req.query;
 
   if (!refresh_token || !threadId || !to || !subject || !message) {
     return res.status(400).json({ error: 'Missing required fields' });
@@ -98,10 +98,13 @@ app.post('/reply', async (req, res) => {
   oauth2Client.setCredentials({ refresh_token });
 
   try {
+    const { token } = await oauth2Client.getAccessToken();
+    oauth2Client.setCredentials({ access_token: token });
+
     await sendReply(oauth2Client, threadId, to, subject, inReplyTo, message);
     res.json({ success: true, message: 'Reply sent successfully' });
   } catch (err) {
-    console.error(err);
+    console.error('Reply Error:', err.message);
     res.status(500).json({ error: 'Failed to send reply' });
   }
 });
