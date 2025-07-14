@@ -8,7 +8,10 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT_N || 3000;
-const SCOPES = process.env.GOOGLE_SCOPES;
+const SCOPES = [
+  'https://www.googleapis.com/auth/gmail.readonly',
+  'https://www.googleapis.com/auth/gmail.send'
+];
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -38,10 +41,10 @@ app.get('/oauth2callback', async (req, res) => {
 });
 
 app.get('/emails', async (req, res) => {
-  const { access_token, from, subject, after, before, is } = req.query;
+  const { refresh_token, from, subject, after, before, is } = req.query;
 
-  if (!access_token) return res.status(400).json({ error: 'Missing access_token' });
-  oauth2Client.setCredentials({ access_token });
+  if (!refresh_token) return res.status(400).json({ error: 'Missing refresh_token' });
+  oauth2Client.setCredentials({ refresh_token });
 
   let query = '';
   if (from) query += `from:${from} `;
@@ -86,13 +89,13 @@ app.get('/emails', async (req, res) => {
 });
 
 app.post('/reply', async (req, res) => {
-  const { accesss_token, threadId, to, subject, inReplyTo, message } = req.body;
+  const { refresh_token, threadId, to, subject, inReplyTo, message } = req.body;
 
-  if (!accesss_token || !threadId || !to || !subject || !message) {
+  if (!refresh_token || !threadId || !to || !subject || !message) {
     return res.status(400).json({ error: 'Missing required fields' });
   }
 
-  oauth2Client.setCredentials({ accesss_token });
+  oauth2Client.setCredentials({ refresh_token });
 
   try {
     await sendReply(oauth2Client, threadId, to, subject, inReplyTo, message);
