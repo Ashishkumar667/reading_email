@@ -10,7 +10,8 @@ app.use(express.json());
 const PORT = process.env.PORT_N || 3000;
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.send'
+  'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.modify'
 ];
 
 const oauth2Client = new google.auth.OAuth2(
